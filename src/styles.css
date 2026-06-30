@@ -183,18 +183,10 @@ button:disabled {
 .board-panel,
 .answer-panel,
 .review-panel,
-fact-panel,
+.fact-panel,
 .revision-source,
 .score-panel,
 .final-answers article {
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: var(--shadow);
-}
-
-.fact-panel {
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 8px;
