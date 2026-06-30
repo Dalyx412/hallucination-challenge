@@ -31,6 +31,7 @@ hallucination-challenge/
 ## Current Interaction Model
 
 - Phase 1: Click words or relationship labels in the expression map to automatically insert answer fragments.
+- The generated answer now adjusts common Japanese particles and connectors based on the selected word order.
 - Phase 2: Click map elements again to spend limited check points and reveal evidence notes.
 - Phase 3: Revise the generated answer using the discovered evidence.
 - Phase 4: Review the score and before/after answers.

@@ -27,11 +27,149 @@ function escapeHtml(value) {
 }
 
 function formatAnswer(items) {
-  return items
-    .map((item) => item.insert)
-    .join(" ")
+  const generated = buildGrammarAwareAnswer(items);
+  if (generated) return generated;
+
+  return normalizeJapaneseParagraph(items.map((item) => item.insert).join(" "));
+}
+
+function buildGrammarAwareAnswer(items) {
+  if (!items.length) return "";
+
+  const sentences = [];
+  const coveredNodeIds = new Set();
+  const selectedLinks = items.filter((item) => item.kind === "link");
+  const selectedNodes = items.filter((item) => item.kind === "node");
+
+  if (selectedLinks.length) {
+    selectedLinks.forEach((item) => {
+      const link = linkById[item.id];
+      const sentenceText = renderSelectedLinkSentence(link, items);
+      if (sentenceText) {
+        sentences.push(sentenceText);
+        coveredNodeIds.add(link.source);
+        coveredNodeIds.add(link.target);
+      }
+    });
+  } else {
+    for (let index = 0; index < selectedNodes.length - 1; index += 1) {
+      const current = nodeById[selectedNodes[index].id];
+      const next = nodeById[selectedNodes[index + 1].id];
+      const sentenceText = renderAdjacentNodeSentence(current, next);
+      if (sentenceText) {
+        sentences.push(sentenceText);
+        coveredNodeIds.add(current.id);
+        coveredNodeIds.add(next.id);
+      }
+    }
+  }
+
+  selectedNodes.forEach((item, index) => {
+    const node = nodeById[item.id];
+    if (coveredNodeIds.has(node.id)) return;
+    const sentenceText = renderStandaloneNodeSentence(node, index);
+    if (sentenceText) sentences.push(sentenceText);
+  });
+
+  return normalizeJapaneseParagraph(sentences.join(""));
+}
+
+function getNodeGrammar(node) {
+  return data.grammar?.nodes?.[node.id] || {};
+}
+
+function getLinkGrammar(link) {
+  return data.grammar?.links?.[link.id] || {};
+}
+
+function findLinkBetween(firstId, secondId) {
+  return data.links.find(
+    (link) =>
+      (link.source === firstId && link.target === secondId) ||
+      (link.source === secondId && link.target === firstId)
+  );
+}
+
+function renderSelectedLinkSentence(link, items) {
+  if (!link) return "";
+  const sourceIndex = items.findIndex((item) => item.kind === "node" && item.id === link.source);
+  const targetIndex = items.findIndex((item) => item.kind === "node" && item.id === link.target);
+  const isForward = sourceIndex === -1 || targetIndex === -1 || sourceIndex < targetIndex;
+  return renderLinkSentence(link, isForward);
+}
+
+function renderAdjacentNodeSentence(current, next) {
+  if (!current || !next) return "";
+
+  const currentGrammar = getNodeGrammar(current);
+  const nextGrammar = getNodeGrammar(next);
+
+  if (currentGrammar.role === "citation" && nextGrammar.role === "metric") {
+    return `${currentGrammar.opener}、${nextGrammar.claim}`;
+  }
+
+  if (currentGrammar.role === "metric" && nextGrammar.role === "citation") {
+    return `${currentGrammar.claim} ${nextGrammar.opener}、その根拠があるように説明できます。`;
+  }
+
+  if (currentGrammar.role === "confounder" && nextGrammar.role === "outcome") {
+    return `${currentGrammar.subject}、${nextGrammar.relation}に関係している可能性があります。`;
+  }
+
+  if (currentGrammar.role === "outcome" && nextGrammar.role === "confounder") {
+    return `${currentGrammar.relation}の背景には、${nextGrammar.relation}が関係している可能性があります。`;
+  }
+
+  const link = findLinkBetween(current.id, next.id);
+  if (!link) return "";
+
+  return renderLinkSentence(link, link.source === current.id);
+}
+
+function renderLinkSentence(link, isForward) {
+  const grammar = getLinkGrammar(link);
+  return ensureSentence(isForward ? grammar.forward || link.insert : grammar.reverse || link.insert);
+}
+
+function renderStandaloneNodeSentence(node, index) {
+  const grammar = getNodeGrammar(node);
+  const prefix = index === 0 ? "" : grammar.role === "confounder" ? "一方で、" : "また、";
+
+  if (grammar.role === "metric") {
+    return `${prefix}${grammar.claim || grammar.detail || node.insert}`;
+  }
+
+  if (grammar.role === "citation") {
+    return `${prefix}${grammar.detail || node.insert}`;
+  }
+
+  if (grammar.role === "confounder") {
+    return `${prefix}${grammar.caution || grammar.detail || node.insert}`;
+  }
+
+  if (grammar.role === "outcome") {
+    return `${prefix}${grammar.result || grammar.detail || node.insert}`;
+  }
+
+  if (index === 0 && grammar.topic && grammar.detail) {
+    return `${grammar.topic}、${grammar.detail}`;
+  }
+
+  return `${prefix}${grammar.detail || grammar.result || node.insert}`;
+}
+
+function ensureSentence(text) {
+  const cleaned = String(text || "").trim();
+  if (!cleaned) return "";
+  return /[。！？]$/.test(cleaned) ? cleaned : `${cleaned}。`;
+}
+
+function normalizeJapaneseParagraph(text) {
+  return String(text || "")
     .replace(/\s+/g, " ")
-    .replace(/、\s+/g, "、")
+    .replace(/\s*([、。！？])/g, "$1")
+    .replace(/([。！？])\s+/g, "$1")
+    .replace(/、。/g, "。")
     .trim();
 }
 
@@ -243,7 +381,7 @@ function renderGenerate() {
           <span class="badge">クリックで回答に追加</span>
         </div>
         <p class="brief">
-          関連表現マップから表現やつながりを選び、もっともらしい回答を組み立ててください。
+          関連表現マップから表現やつながりを選ぶと、語順に合わせて助詞や接続表現が自動調整されます。
           この段階では根拠を確認せず、自然さを優先します。
         </p>
         ${renderExpressionMap("compose")}
@@ -254,7 +392,7 @@ function renderGenerate() {
             <p class="eyebrow">回答ボックス</p>
             <h2>選んだ表現</h2>
           </div>
-          <span class="counter">${state.answer.length} 文字</span>
+          <span class="counter">${state.answer.length} 文字・語順調整中</span>
         </div>
         ${renderSelectedItems()}
         <textarea class="answer-textarea" data-field="answer" aria-label="生成した回答">${escapeHtml(state.answer)}</textarea>
