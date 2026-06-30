@@ -1,0 +1,9 @@
+{
+  "name": "hallucination-challenge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI literacy game prototype: build a plausible answer from expression-map chunks, then fact-check and revise it.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
