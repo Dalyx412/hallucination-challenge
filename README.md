@@ -18,6 +18,8 @@ This starts everything needed for sharing:
 - `ngrok-url.url`, a clickable Windows shortcut to the current public URL
 - the public ngrok URL in your browser
 
+If another ordinary `ngrok http` tunnel is already running and is not pointing to port `5173`, `start.bat` replaces it so the project URL always points to this challenge server.
+
 To stop everything, double-click:
 
 ```text

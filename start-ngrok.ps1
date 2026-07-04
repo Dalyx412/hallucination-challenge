@@ -50,7 +50,7 @@ function Get-NgrokTunnelUrl {
   $candidate = $tunnels |
     Where-Object {
       $_.public_url -like "https://*" -and
-      ($_.config.addr -match "\b$Port\b" -or $_.name -match "command_line")
+      $_.config.addr -match "\b$Port\b"
     } |
     Select-Object -First 1
 
@@ -59,6 +59,39 @@ function Get-NgrokTunnelUrl {
   }
 
   return $null
+}
+
+function Test-HasOtherNgrokTunnel {
+  try {
+    $response = Invoke-RestMethod -Uri $ApiUrl -TimeoutSec 1
+  } catch {
+    return $false
+  }
+
+  $tunnels = @($response.tunnels)
+  if (-not $tunnels.Count) {
+    return $false
+  }
+
+  return -not [bool](Get-NgrokTunnelUrl)
+}
+
+function Stop-OtherNgrokHttpTunnels {
+  $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.Name -eq "ngrok.exe" -and
+      $_.CommandLine -match "\bhttp\b" -and
+      $_.CommandLine -notmatch "\b$Port\b"
+    }
+
+  foreach ($process in $processes) {
+    Stop-Process -Id $process.ProcessId -Force
+    Write-Host "Stopped non-challenge ngrok http tunnel process $($process.ProcessId)."
+  }
+
+  if ($processes) {
+    Start-Sleep -Milliseconds 800
+  }
 }
 
 function Wait-ForNgrokUrl {
@@ -85,6 +118,10 @@ Set-Location -LiteralPath $Root
 
 $publicUrl = Get-NgrokTunnelUrl
 if (-not $publicUrl) {
+  if (Test-HasOtherNgrokTunnel) {
+    Stop-OtherNgrokHttpTunnels
+  }
+
   $ngrok = Get-NgrokPath
   $reservedUrl = Get-ReservedNgrokUrl
   $args = @("http", $Port.ToString(), "--log=ngrok.log")
