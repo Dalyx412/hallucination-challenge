@@ -1,4 +1,10 @@
 server.log
 server.err.log
+ngrok.log
+ngrok-url.txt
+ngrok-url.url
+ngrok-reserved-url.local.txt
+ngrok.yml
+.ngrok*
 .DS_Store
 Thumbs.db
